@@ -1,6 +1,6 @@
 CXX = g++
-CXXFLAGS = -Iinclude
-LDFLAGS =
+CXXFLAGS = -Iinclude -Wall -std=c++17
+LDFLAGS = -Iinclude
 LIBS = -lssl -lcrypto
 
 TARGET = Basic_Server
@@ -9,7 +9,7 @@ SRC_DIR = src
 BUILD_DIR = build
 INCLUDE_DIR = include
 
-SOURCES := $(wildcard $(SRC_DIR)/*.cpp)
+SOURCES := $(wildcard $(SRC_DIR)/*.cpp) example/main.cpp
 OBJECTS := $(SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
 all: $(TARGET)

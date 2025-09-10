@@ -99,12 +99,12 @@ void Server::handle_client(int socket_fd, sockaddr_in *address) {
     http::response *res = new http::response;
     bool keep_alive = false;
 
-    unsigned char* ptr = (unsigned char*)&(address->sin_addr.s_addr);
+    /* unsigned char* ptr = (unsigned char*)&(address->sin_addr.s_addr);
     cout << (int)(*ptr) << '.'
          << (int)(*(ptr + 1)) << '.'
          << (int)(*(ptr + 2)) << '.'
          << (int)(*(ptr + 3)) << ':'
-         << address->sin_port << endl;
+         << address->sin_port << endl; */
 
     try {
     keep:

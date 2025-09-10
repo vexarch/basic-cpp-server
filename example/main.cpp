@@ -3,7 +3,6 @@
 #include <csignal>
 #include <string>
 #include <vector>
-#include <list>
 #include "server.h"
 #include "controller.h"
 #include "http.hpp"
@@ -24,9 +23,8 @@ void signal_handler(int sig) {
 
 class ProductsController: public Controller {
 private:
-    vector<string> products = {"PC", "Car", "Door", "Rat"};
+    vector<string> products = {"Intel Core i9-13900K", "AMD Ryzen 9 7950X", "NVIDIA GeForce RTX 4090", "AMD Radeon RX 7900 XTX", "Corsair Vengeance DDR5 32GB", "G.Skill Trident Z5 RGB 32GB", "Samsung 990 PRO 2TB SSD", "WD Black SN850X 2TB", "ASUS ROG Strix Z790-E", "MSI MPG X670E Carbon", "Corsair RM850x PSU"};
     http::response Get(http::request &req) const override {
-        // cout << "Request received" << endl;
         if (req.uri.route.size() != 1)
             return http::not_found();
         nlohmann::json j = products;
@@ -43,9 +41,8 @@ int main()
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
     Server server(HOST, PORT);
-    server.use_static_files();
+    server.use_static_files("example/wwwroot");
     server.use_controllers(controllers);
-    //server.use_https("ssl/cert.pem", "ssl/key.pem");
     s = &server;
     cout << "Server started on http://" << HOST << ":" << PORT << " ..." << endl;
     server.listen_for_clients(10);
