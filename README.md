@@ -153,7 +153,7 @@ int main(int argc, char** argv) {
 ```
 
 #### Using static files
-Create a folder and add your website files in it, the main page name should be **index.html** and it should be the top directory of the folder since the server automaticly return index.html if the route was / .
+Create a folder and add your website files in it, the main page name should be **index.html** and it should be the top directory of the folder since the server automaticly return index.html if the route was / (the root) .
 ```html
 <!DOCTYPE html>
 <html>
