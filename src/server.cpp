@@ -1,0 +1,263 @@
+#include "server.h"
+
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <sys/time.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <thread>
+
+#include <iostream>
+
+#include <map>
+#include <unordered_map>
+#include <algorithm>
+#include <vector>
+#include <string>
+
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
+#include "http.hpp"
+#include "controller.h"
+#include "ssl.h"
+#include "helpers.h"
+
+#define BUFFER_SIZE 16384
+
+using namespace std;
+namespace fs = std::filesystem;
+
+Server::Server(const char* host, int port) {
+    int server_fd;
+    struct sockaddr_in address;
+    int opt = 1;
+
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        throw std::runtime_error("Failed to create socket");
+    }
+
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT,
+                   &opt, sizeof(opt))) {
+        throw std::runtime_error("Failed to set port");
+    }
+
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = inet_addr(host);
+    address.sin_port = htons(port);
+
+    if (bind(server_fd, (struct sockaddr*)&address, sizeof(struct sockaddr))) {
+        throw std::runtime_error("Bind failed");
+    }
+
+    fd = server_fd;
+    this->address = address;
+}
+
+Server::~Server() {
+    terminate();
+}
+
+void Server::start_server_loop() {
+    int new_socket;
+    socklen_t al = sizeof(address);
+    int con_index;
+    while (running) {
+        con_index = -1;
+        for (int i = 0; i < connections.size(); i++) {
+            if (connections[i].fd == -1) {
+                con_index = i;
+                break;
+            }
+        }
+        if (con_index == -1) {
+            // throw runtime_error("Too many connections");
+            usleep(100000); // Sleep for 0.1 second
+            continue;
+        }
+        struct sockaddr_in address;
+        if ((new_socket = accept(fd, (struct sockaddr*)&address, &al)) < 0) {
+            continue;
+        }
+        connections[con_index].fd = new_socket;
+        if (use_tls) {
+            SSL* ssl;
+            if (establish_connection(&ssl, ssl_ctx, new_socket)) {
+                connections[con_index].ssl = ssl;
+                std::thread(&Server::handle_tls_client, this, ssl, new_socket, &address).detach();
+            } else {
+                cout << "Failed to establish tls connection with client: " <<
+                    (unsigned char)(address.sin_addr.s_addr) << endl;
+                connections[con_index].fd = -1;
+            }
+        } else
+            std::thread(&Server::handle_client, this, new_socket, &address).detach();
+    }
+}
+
+void Server::handle_client(int socket_fd, sockaddr_in *address) {
+    http::response *res = new http::response;
+    bool keep_alive = false;
+
+    unsigned char* ptr = (unsigned char*)&(address->sin_addr.s_addr);
+    cout << (int)(*ptr) << '.'
+         << (int)(*(ptr + 1)) << '.'
+         << (int)(*(ptr + 2)) << '.'
+         << (int)(*(ptr + 3)) << ':'
+         << address->sin_port << endl;
+
+    try {
+    keep:
+        string input = read_to_end(socket_fd);
+        http::request req = http::parseRequest(input);
+
+        string uri = "";
+        for (auto& r: req.uri.route)
+            uri += "/" + r ;
+
+        if (uri.empty())
+            uri = "/";
+
+        if (static_files.find(uri) != static_files.end()) {
+            *res = http::ok(get_content_type(uri), static_files[uri].data());
+        } else if (uri == "/") {
+            *res = http::ok("text/html", static_files["/index.html"].data());
+        } else if (!req.uri.route.empty()) {
+            for (auto& c: controllers) {
+                if (c->get_route() == req.uri.route[0]) {
+                    *res = c->handle(req);
+                }
+            }
+        } else {
+            *res = http::not_found();
+        }
+
+        if (req.headers.find("Connection") != req.headers.end() &&
+            req.headers["Connection"] == "keep-alive") {
+            keep_alive = true;
+            res->headers["Connection"] = "keep-alive";
+        } else
+            keep_alive = false;
+
+        string res_str = http::serializeResponse(*res);
+        write(socket_fd, res_str.data(), res_str.size());
+
+        if (keep_alive) goto keep;
+    } catch (...) {
+
+    }
+
+    delete res;
+    for (connection& c: connections) {
+        if (c.fd == socket_fd) {
+            c.fd = -1;
+            break;
+        }
+    }
+    close(socket_fd);
+}
+
+void Server::handle_tls_client(SSL* ssl, int socket_fd, sockaddr_in *address) {
+    http::response *res = new http::response;
+    bool keep_alive = false;
+
+    try {
+    keep:
+        string input = read_to_end(ssl, socket_fd);
+        http::request req = http::parseRequest(input);
+
+        string uri = "";
+        for (auto& r: req.uri.route)
+            uri += "/" + r ;
+
+        if (uri.empty())
+            uri = "/";
+
+
+        if (static_files.find(uri) != static_files.end()) {
+            *res = http::ok(get_content_type(uri), static_files[uri].data());
+        } else if (uri == "/") {
+            *res = http::ok("text/html", static_files["/index.html"].data());
+        } else if (!req.uri.route.empty()) {
+            for (auto& c: controllers) {
+                if (c->get_route() == req.uri.route[0]) {
+                    *res = c->handle(req);
+                }
+            }
+        } else {
+            *res = http::not_found();
+        }
+
+        if (req.headers.find("Connection") != req.headers.end() &&
+            req.headers["Connection"] == "keep-alive") {
+            keep_alive = true;
+            res->headers["Connection"] = "keep-alive";
+        } else
+            keep_alive = false;
+
+        string res_str = http::serializeResponse(*res);
+        SSL_write(ssl, res_str.data(), res_str.size());
+
+        if (keep_alive) goto keep;
+    } catch (...) {
+
+    }
+
+    delete res;
+    for (connection& c: connections) {
+        if (c.fd == socket_fd) {
+            SSL_shutdown(c.ssl);
+            SSL_free(c.ssl);
+            c.fd = -1;
+            break;
+        }
+    }
+    close(socket_fd);
+}
+
+void Server::listen_for_clients(int max) {
+    if (listen(fd, max))
+        throw std::runtime_error("Can not listen for incoming connections");
+    running = true;
+    connections.resize(max);
+    connection* base_ptr = connections.data();
+    for (connection* i = base_ptr; i < base_ptr + max; i++) {
+        i->fd = -1;
+    }
+    start_server_loop();
+}
+
+void Server::use_static_files(const string &dir) {
+    static_files = get_all_files(dir);
+}
+
+void Server::use_controllers(const vector<Controller*>& controllers) {
+    this->controllers = controllers;
+}
+
+void Server::use_https(const string &cert_file, const string &key_file) {
+    use_tls = true;
+    init_openssl();
+    ssl_ctx = create_context();
+    configure_context(ssl_ctx, cert_file, key_file);
+}
+
+void Server::terminate() {
+    running = false;
+    close(fd);
+    if (use_tls) {
+        for (connection &c: connections) {
+            if (c.fd != -1) {
+                if (c.ssl != nullptr) {
+                    SSL_shutdown(c.ssl);
+                    SSL_free(c.ssl);
+                }
+                close(c.fd);
+            }
+        }
+        SSL_CTX_free(ssl_ctx);
+        cleanup_openssl();
+    }
+    else
+        for (connection &c: connections) close(c.fd);
+}
