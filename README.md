@@ -191,10 +191,18 @@ Use a browser or just the curl command to see the file
 curl http://127.0.0.1:1234/
 ```
 
+## Contributing
+Contributions are welcome! Please fork the repo and submit a pull request.
+- Fork the repository
+- Create a feature branch (git checkout -b feature/my-feature)
+- Commit your changes
+- Push to your branch
+- Open a PR
 
 ## Known issues
 - The code does not contain any logs beside some errors logs
 - Sometimes the server returns OK instead of NOT FOUND if it didn't find the static file
+- The project is not tested properly so more bugs and problems exists
 
 ## License
 This project is licensed under the MIT License. See [LICENSE](./LICENSE) for details.
