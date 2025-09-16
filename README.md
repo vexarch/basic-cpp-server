@@ -38,8 +38,8 @@ cd basic-cpp-server
 ### Build and run the example
 
 ```bash
-make
-./Basic_Server
+make example
+./basic-server
 ```
 
 ### Build your own server
@@ -52,28 +52,11 @@ This project uses OOP principles and offers classes/namespaces for building serv
 #include <iostream>
 #include <string>
 #include <vector>
-#include <csignal> // For shutdown handling
 #include <nlohmann/json.hpp>
 // Project headers
 #include "server.h"
 #include "controller.h"
 #include "http.hpp"
-```
-
-#### Setup signal handling (optional but recommended)
-
-```cpp
-Server* s;
-std::vector<Controller*> controllers;
-
-const char HOST[] = "127.0.0.1";
-const int PORT = 1234;
-
-void signal_handler(int sig) {
-    if (s != nullptr) {
-        s->terminate();
-    }
-}
 ```
 
 #### Create Controllers
@@ -106,8 +89,6 @@ public:
 ```cpp
 int main(int argc, char** argv) {
     controllers = { new UsersController };
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
 
     Server server(HOST, PORT);
     server.use_controllers(controllers);
@@ -125,7 +106,7 @@ int main(int argc, char** argv) {
 Use curl or a browser:
 
 ```bash
-curl http://127.0.0.1:1234/users?name=vexarch
+curl http://127.0.0.1:1234/users?name=Vexarch
 ```
 
 ### HTTPS Support
@@ -184,7 +165,6 @@ Contributions are welcome! Please fork the repo and submit a pull request:
 
 ## Known Issues
 
-- Limited logging (only some errors)
 - Server may return OK instead of NOT FOUND for missing static files
 - Project is not fully tested, expect possible bugs
 
