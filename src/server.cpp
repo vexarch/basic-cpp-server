@@ -28,7 +28,7 @@
 using namespace std;
 namespace fs = std::filesystem;
 
-Server::Server(const char* host, int port) {
+Server::Server(const std::string& host, uint16_t port) {
     int server_fd;
     struct sockaddr_in address;
     int opt = 1;
@@ -43,7 +43,8 @@ Server::Server(const char* host, int port) {
     }
 
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = inet_addr(host);
+    if ((address.sin_addr.s_addr = inet_addr(host.c_str())) == INADDR_NONE)
+        throw std::invalid_argument("Invalid IP address: " + host);
     address.sin_port = htons(port);
 
     if (bind(server_fd, (struct sockaddr*)&address, sizeof(struct sockaddr))) {
@@ -114,10 +115,10 @@ void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address) 
         std::cout << '[' << get_time()
                   << "] Client: "
                   << ip
-                  << "sent "
+                  << " sent "
                   << req.method
-                  << "request"
-                  <<std::endl;
+                  << " request"
+                  << std::endl;
 
         string uri = "";
         for (auto& r: req.uri.route)
@@ -173,15 +174,25 @@ void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr
     std::unique_ptr<http::response> res = std::make_unique<http::response>();
     bool keep_alive = false;
 
+    std::string ip = ip_to_str(address->sin_addr.s_addr);
+
     std::cout << '[' << get_time()
               << "] Client connected: "
-              << ip_to_str(address->sin_addr.s_addr)
+              << ip
               << std::endl;
 
     try {
     keep:
         string input = read_to_end(ssl, socket_fd);
         http::request req = http::parseRequest(input);
+
+        std::cout << '[' << get_time()
+                  << "] Client: "
+                  << ip
+                  << " sent "
+                  << req.method
+                  << " request"
+                  << std::endl;
 
         string uri = "";
         for (auto& r: req.uri.route)
@@ -193,7 +204,7 @@ void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr
 
         if (static_files.find(uri) != static_files.end()) {
             res.reset(new http::response(http::ok(get_content_type(uri), static_files[uri].data())));
-        } else if (uri == "/") {
+        } else if (uri == "/" && static_files.find("/index.html") != static_files.end()) {
             res.reset(new http::response(http::ok("text/html", static_files["/index.html"].data())));
         } else if (!req.uri.route.empty()) {
             for (auto& c: controllers) {
@@ -229,6 +240,11 @@ void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr
         }
     }
     close(socket_fd);
+
+    std::cout << '[' << get_time()
+              << "] Client disconnected: "
+              << ip
+              << std::endl;
 }
 
 void Server::listen_for_clients(int max) {

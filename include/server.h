@@ -36,7 +36,7 @@ private:
     void handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address);
     void handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr_in> address);
 public:
-    Server(const char* host, int port);
+    Server(const std::string& host, uint16_t port);
     ~Server();
     void listen_for_clients(int max = 100);
     void use_static_files(const string& dir = "wwwroot");
