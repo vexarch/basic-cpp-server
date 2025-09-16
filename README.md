@@ -44,7 +44,7 @@ make
 
 ### Build your own server
 
-This project uses OOP principles and offers classes/namespaces for building servers without editing core source code. You can modify the [example](example/main) or create your own `Makefile` and `main.cpp`.
+This project uses OOP principles and offers classes/namespaces for building servers without editing core source code. You can modify the [example](example/main) or create your own `Makefile` and [...] 
 
 #### Include required headers
 
@@ -191,3 +191,5 @@ Contributions are welcome! Please fork the repo and submit a pull request:
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](./LICENSE) for details.
+
+This project uses OpenSSL for HTTPS support. OpenSSL is licensed under the Apache License 2.0. If you distribute binaries linked against OpenSSL, please ensure you comply with its license terms. See the [OpenSSL License](https://www.openssl.org/source/license.html) for details.
