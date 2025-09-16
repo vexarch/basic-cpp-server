@@ -20,4 +20,9 @@ std::string read_to_end(SSL* ssl, int fd, int timeout = 10);
 // returns the MIME content type
 std::string get_content_type(const std::string& filename);
 
+// returns the current time in HH:MM:SS format
+std::string get_time();
+
+std::string ip_to_str(int ip);
+
 #endif // HELPERS_H

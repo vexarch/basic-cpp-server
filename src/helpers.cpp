@@ -192,3 +192,29 @@ std::string get_content_type(const std::string& filename) {
 
     return "application/octet-stream";
 }
+
+std::string get_time() {
+    time_t now = time(nullptr);
+    char buffer[26];
+    ctime_r(&now, buffer);
+    std::string str(buffer);
+    int i = 0;
+    int pos = 0;
+    while (true) {
+        if ((pos = (int)str.find(' ', pos)) != std::string::npos) {i++;pos++;}
+        else return "";
+        if (i == 3) {
+            str = str.substr(pos, 8);
+            break;
+        }
+    }
+
+    return str;
+}
+
+std::string ip_to_str(int ip) {
+    std::ostringstream oss;
+    unsigned char* ptr = (unsigned char*)&ip;
+    oss << (int)*ptr << "." << (int)*(++ptr) << "." << (int)*(++ptr) << "." << (int)*(++ptr);
+    return oss.str();
+}
