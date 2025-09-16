@@ -1,64 +1,68 @@
-# Basic HTTP server in C++
+# Basic C++ HTTP Server
 
-A lightweight and small HTTP server written in C++. Ideal for learning how web servers works in low level
+A minimal, lightweight HTTP server written in C++. Designed for learning how web servers work at a low level and for building simple web applications.
 
 ## Features
 
-- Endpoints support using the Controller class which make it scalable
-- Rich library of built-in functions for responses that covers wide range of status with customizable headers and body
-- HTTPS support via OpenSSL
-- Static files support with automatic MIME type detection
+- Scalable endpoints via the `Controller` class
+- Rich built-in library for customizable HTTP responses (status, headers, body)
+- HTTPS support (OpenSSL)
+- Static file serving with automatic MIME type detection
 
-## Usage
+## Requirements
 
-### Prerequisites
-
-- POSIX compatible system (Linuxm, Unix, WSL)
+- POSIX-compatible system (Linux, Unix, WSL)
 - C++ compiler
 - Make
 - OpenSSL >= 3
-- nlohmann **(For json parsing / serializing)**
+- nlohmann-json (for JSON parsing/serialization)
 
-### Installation
-#### Install dependencies
+## Installation
+
+### Install dependencies
+
 ```bash
 sudo apt update
 sudo apt install build-essential libssl-dev nlohmann-json3-dev
 ```
 
-#### Clone the repository
+### Clone the repository
+
 ```bash
 git clone https://github.com/vexarch/basic-cpp-server.git
 cd basic-cpp-server
 ```
 
+## Usage
+
 ### Build and run the example
+
 ```bash
 make
 ./Basic_Server
 ```
 
-### Make your own server
-This project uses OOP, it offers some classes and namespaces for building a server without needing to edit the source code<br>
-You can edit the [example](example/main) file or make your own [Makefile](Makefile) and main.cpp files
+### Build your own server
 
-#### Include necessairy headers
-```C++
+This project uses OOP principles and offers classes/namespaces for building servers without editing core source code. You can modify the [example](example/main) or create your own `Makefile` and `main.cpp`.
+
+#### Include required headers
+
+```cpp
 #include <iostream>
 #include <string>
 #include <vector>
-#include <csignal> // For proper shutdown
+#include <csignal> // For shutdown handling
 #include <nlohmann/json.hpp>
-// The project headers
+// Project headers
 #include "server.h"
 #include "controller.h"
 #include "http.hpp"
 ```
 
-#### Setup the clean up
-This step is optional since when exiting the system regain the resources anyway but recommended for safely closing all server connection
-```C++
-// Global variables
+#### Setup signal handling (optional but recommended)
+
+```cpp
 Server* s;
 std::vector<Controller*> controllers;
 
@@ -72,137 +76,118 @@ void signal_handler(int sig) {
 }
 ```
 
-#### Make controllers
-Use the controller class to make controllers for diffrent endpoints
-```C++
-class UsersController: public Controller {
+#### Create Controllers
+
+Use the `Controller` class for different endpoints:
+
+```cpp
+class UsersController : public Controller {
 private:
     std::vector<std::string> users = { "Vexarch", "Someone" };
 
-    // The syntax is the same for other functions (Post, Put, Delete, Patch and Options)
     http::response Get(http::request &req) const override {
-        if (req.uri.parameters.find("name") != req.uri.parameters.end()) // The server automaticly extract parameters from URI
+        if (req.uri.parameters.find("name") == req.uri.parameters.end())
             return http::bad_request("text/plain", "Missing parameter");
 
         std::string name = req.uri.parameters["name"];
-
-        for (std::string& user: users) {
+        for (const std::string& user : users) {
             if (user == name)
                 return http::accepted("text/plain", "You are allowed");
         }
-
         return http::unauthorized("text/plain", "You are not allowed");
     }
 public:
-    // It is important to set the route name of the controller in the constructor
-    UsersController(): Controller("users") {}
-}
+    UsersController() : Controller("users") {}
+};
 ```
 
 #### Start the server
-```C++
-int main(int argc, char** argv) {
-    controllers = {new UsersController};
 
+```cpp
+int main(int argc, char** argv) {
+    controllers = { new UsersController };
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
     Server server(HOST, PORT);
-
     server.use_controllers(controllers);
     s = &server;
 
-    cout << "Server started on http://" << HOST << ":" << PORT << " ..." << endl;
-    server.listen_for_clients(10); // The number specifies the maximum number of clients at the same time
+    std::cout << "Server started on http://" << HOST << ":" << PORT << " ..." << std::endl;
+    server.listen_for_clients(10); // Max simultaneous clients
 
     return 0;
 }
 ```
 
 #### Test the server
-Use terminal (or browser) to test the server
+
+Use curl or a browser:
+
 ```bash
 curl http://127.0.0.1:1234/users?name=vexarch
 ```
 
-#### Using HTTPS
-To use HTTPS you should create a self signed certificate and key using OpenSSL
+### HTTPS Support
+
+To use HTTPS, create a self-signed certificate:
+
 ```bash
 openssl req -x509 -nodes -days 365 -newkey rsa:4096 -keyout key.pem -out cert.pem
 ```
-Then use the generated files in the code
-```C++
-int main(int argc, char** argv) {
-    controllers = {new UsersController};
 
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
+Update your server code to use HTTPS:
 
-    Server server(HOST, PORT);
-
-    server.use_controllers(controllers);
-    s = &server;
-
-    server.use_https("cert.pem", "key.pem"); // PEM files must be in the same directory as the executable
-
-    cout << "Server started on https://" << HOST << ":" << PORT << " ..." << endl;
-    server.listen_for_clients(10);
-
-    return 0;
-}
+```cpp
+server.use_https("cert.pem", "key.pem"); // PEM files must be in the executable's directory
 ```
 
-#### Using static files
-Create a folder and add your website files in it, the main page name should be **index.html** and it should be the top directory of the folder since the server automaticly return index.html if the route was / (the root) .
+### Static File Serving
+
+Create a folder (e.g., `public`) with your website files. The main page should be `index.html` located at the top level.
+
+Sample `index.html`:
+
 ```html
 <!DOCTYPE html>
 <html>
-    <head>
-        <title>My Website</title>
-    </head>
-    <body>
-        <h1>Hello from C++ server</h1>
-    </body>
+  <head>
+    <title>My Website</title>
+  </head>
+  <body>
+    <h1>Hello from C++ server</h1>
+  </body>
 </html>
 ```
-Then use it in the script
-```C++
-int main(int argc, char** argv) {
-    controllers = {new UsersController};
 
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
+Serve static files:
 
-    Server server(HOST, PORT);
-
-    server.use_controllers(controllers);
-    s = &server;
-
-    server.use_static_files("dir_name"); // Replace the dir_name with the accual path to the website files folder
-
-    cout << "Server started on http://" << HOST << ":" << PORT << " ..." << endl;
-    server.listen_for_clients(10);
-
-    return 0;
-}
+```cpp
+server.use_static_files("public"); // Replace with your folder name
 ```
-Use a browser or just the curl command to see the file
+
+Test:
+
 ```bash
 curl http://127.0.0.1:1234/
 ```
 
 ## Contributing
-Contributions are welcome! Please fork the repo and submit a pull request.
-- Fork the repository
-- Create a feature branch (git checkout -b feature/my-feature)
-- Commit your changes
-- Push to your branch
-- Open a PR
 
-## Known issues
-- The code does not contain any logs beside some errors logs
-- Sometimes the server returns OK instead of NOT FOUND if it didn't find the static file
-- The project is not tested properly so more bugs and problems exists
+Contributions are welcome! Please fork the repo and submit a pull request:
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Commit your changes
+4. Push to your branch
+5. Open a PR
+
+## Known Issues
+
+- Limited logging (only some errors)
+- Server may return OK instead of NOT FOUND for missing static files
+- Project is not fully tested, expect possible bugs
 
 ## License
+
 This project is licensed under the MIT License. See [LICENSE](./LICENSE) for details.
