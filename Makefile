@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -Iinclude -Wall -std=c++17
+CXXFLAGS = -Iinclude -Wall -Wextra -std=c++17
 LDFLAGS = -Iinclude
 LIBS = -lssl -lcrypto
 
