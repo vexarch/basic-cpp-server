@@ -7,19 +7,11 @@
 #include "controller.h"
 #include "http.hpp"
 
-using namespace std;
-
-const char HOST[] = "127.0.0.1";
-const int PORT = 8080;
+const std::string HOST = "127.0.0.1";
+const uint16_t PORT = 8080;
 
 Server* s = nullptr;
 vector<Controller*> controllers;
-
-void signal_handler(int sig) {
-    if (s != nullptr) {
-        s->terminate();
-    }
-}
 
 class ProductsController: public Controller {
 private:
@@ -38,8 +30,6 @@ public:
 int main()
 {
     controllers = {new ProductsController};
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
     Server server(HOST, PORT);
     server.use_static_files("example/wwwroot");
     server.use_controllers(controllers);
