@@ -33,8 +33,8 @@ private:
     vector<Controller*> controllers;
 
     void start_server_loop();
-    void handle_client(int socket_fd, sockaddr_in* address);
-    void handle_tls_client(SSL* ssl, int socket_fd, sockaddr_in *address);
+    void handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address);
+    void handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr_in> address);
 public:
     Server(const char* host, int port);
     ~Server();
