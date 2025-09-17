@@ -153,7 +153,10 @@ void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address) 
 
         if (keep_alive) goto keep;
     } catch (...) {
-
+        std::cout << '[' << get_time()
+              << "] Error with client: "
+              << ip
+              << std::endl;
     }
 
     for (connection& c: connections) {
@@ -228,7 +231,10 @@ void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr
 
         if (keep_alive) goto keep;
     } catch (...) {
-
+        std::cout << '[' << get_time()
+              << "] Error with client: "
+              << ip
+              << std::endl;
     }
 
     for (connection& c: connections) {
