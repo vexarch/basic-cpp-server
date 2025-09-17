@@ -136,7 +136,7 @@ Sample `index.html`:
     <title>My Website</title>
   </head>
   <body>
-    <h1>Hello from C++ server</h1>
+    <h1 align="center">Hello from C++ server</h1>
   </body>
 </html>
 ```
