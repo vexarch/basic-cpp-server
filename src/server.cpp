@@ -129,7 +129,7 @@ void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address) 
 
         if (static_files.find(uri) != static_files.end()) {
             res.reset(new http::response(http::ok(get_content_type(uri), static_files[uri].data())));
-        } else if (uri == "/") {
+        } else if (uri == "/" && static_files.find("/index.html") != static_files.end()) {
             res.reset(new http::response(http::ok("text/html", static_files["/index.html"].data())));
         } else if (!req.uri.route.empty()) {
             for (auto& c: controllers) {
@@ -145,8 +145,11 @@ void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address) 
             req.headers["Connection"] == "keep-alive") {
             keep_alive = true;
             res->headers["Connection"] = "keep-alive";
-        } else
-            keep_alive = false;
+        } else {
+        	keep_alive = false;
+        	res->headers["Connection"] = "close";
+        }
+            
 
         string res_str = http::serializeResponse(*res);
         write(socket_fd, res_str.data(), res_str.size());
@@ -223,8 +226,10 @@ void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr
             req.headers["Connection"] == "keep-alive") {
             keep_alive = true;
             res->headers["Connection"] = "keep-alive";
-        } else
+        } else {
             keep_alive = false;
+            res->headers["Connection"] = "close";
+        }
 
         string res_str = http::serializeResponse(*res);
         SSL_write(ssl, res_str.data(), res_str.size());

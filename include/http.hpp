@@ -9,6 +9,7 @@
 using namespace std;
 
 namespace http {
+
 class URI {
 public:
     vector<string> route;
