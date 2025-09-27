@@ -60,7 +60,7 @@ URI::URI(const string& uriString) {
     }
 }
 
-request parseRequest(const string& input) {
+request parse_request(const string& input) {
     request req;
     istringstream stream(input);
     string line;
@@ -100,7 +100,7 @@ request parseRequest(const string& input) {
     return req;
 }
 
-string serializeResponse(response& res) {
+string serialize_response(response& res) {
     ostringstream stream;
     bool has_body = !res.body.empty();
 

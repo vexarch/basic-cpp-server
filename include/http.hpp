@@ -35,9 +35,9 @@ struct response {
     string body;
 };
 
-request parseRequest(const string& input);
+request parse_request(const string& input);
 
-string serializeResponse(response& res);
+string serialize_response(response& res);
 
 response ok();
 response ok(const nlohmann::json& body);

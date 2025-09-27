@@ -110,7 +110,7 @@ void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address) 
     try {
     keep:
         string input = read_to_end(socket_fd);
-        http::request req = http::parseRequest(input);
+        http::request req = http::parse_request(input);
 
         std::cout << '[' << get_time()
                   << "] Client: "
@@ -151,7 +151,7 @@ void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address) 
         }
             
 
-        string res_str = http::serializeResponse(*res);
+        string res_str = http::serialize_response(*res);
         write(socket_fd, res_str.data(), res_str.size());
 
         if (keep_alive) goto keep;
@@ -190,7 +190,7 @@ void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr
     try {
     keep:
         string input = read_to_end(ssl, socket_fd);
-        http::request req = http::parseRequest(input);
+        http::request req = http::parse_request(input);
 
         std::cout << '[' << get_time()
                   << "] Client: "
@@ -231,7 +231,7 @@ void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr
             res->headers["Connection"] = "close";
         }
 
-        string res_str = http::serializeResponse(*res);
+        string res_str = http::serialize_response(*res);
         SSL_write(ssl, res_str.data(), res_str.size());
 
         if (keep_alive) goto keep;
