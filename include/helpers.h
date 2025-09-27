@@ -9,8 +9,8 @@
 #define BUFFER_SIZE 16384
 
 struct padding {
-    int size = 0;
     int offset = 0;
+    int size = 0;
 };
 
 // Read the content of all files from the directory dir
@@ -29,9 +29,6 @@ std::string get_content_type(const std::string& filename);
 std::string get_time();
 
 std::string ip_to_str(int ip);
-
-// return the each padding size and its offset
-std::vector<padding> calculate_struct_padding(const std::vector<int>& sizes);
 
 // Copies from a struct with padding to a tightly packed buffer (no padding between members)
 // Arguments:
