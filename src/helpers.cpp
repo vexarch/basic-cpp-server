@@ -218,3 +218,96 @@ std::string ip_to_str(int ip) {
     oss << (int)*ptr << "." << (int)*(++ptr) << "." << (int)*(++ptr) << "." << (int)*(++ptr);
     return oss.str();
 }
+
+std::vector<padding> calculate_struct_padding(const std::vector<int>& sizes) {
+    std::vector<padding> paddings;
+
+    if (sizes.empty()) {
+        return paddings;
+    }
+
+    int currentOffset = 0;
+    int maxAlignment = *std::max_element(sizes.begin(), sizes.end());
+
+    for (size_t i = 0; i < sizes.size(); ++i) {
+        int memberSize = sizes[i];
+        int memberAlignment = memberSize; // assuming alignment == size
+
+        // Calculate padding needed before this member
+        int padding = (memberAlignment - (currentOffset % memberAlignment)) % memberAlignment;
+
+        if (padding > 0) {
+            paddings.push_back({padding, currentOffset});
+            currentOffset += padding;
+        } else {
+            // 0 padding
+            //paddings.push_back({0, currentOffset});
+        }
+
+        // Place the member
+        currentOffset += memberSize;
+    }
+
+    // Final padding to round struct size to multiple of maxAlignment
+    int finalPadding = (maxAlignment - (currentOffset % maxAlignment)) % maxAlignment;
+    if (finalPadding > 0) {
+        paddings.push_back({finalPadding, currentOffset});
+        currentOffset += finalPadding;
+    }
+
+    return paddings;
+}
+
+void pack_struct(const void* src, void* dst, const std::vector<int>& memberSizes, const std::vector<padding>& paddings) {
+    const char* srcPtr = static_cast<const char*>(src);
+    char* dstPtr = static_cast<char*>(dst);
+
+    int srcOffset = 0;
+    size_t paddingIndex = 0;
+
+    for (size_t i = 0; i < memberSizes.size(); ++i) {
+        // Skip padding before this member
+        if (paddingIndex < paddings.size() && paddings[paddingIndex].offset == srcOffset) {
+            srcOffset += paddings[paddingIndex].size;
+            ++paddingIndex;
+        }
+
+        // Copy the member
+        std::memcpy(dstPtr, srcPtr + srcOffset, memberSizes[i]);
+
+        // Advance pointers
+        dstPtr += memberSizes[i];
+        srcOffset += memberSizes[i];
+    }
+}
+
+void unpack_struct(const void* src, void* dst, const std::vector<int>& memberSizes, const std::vector<padding>& paddings) {
+    const char* srcPtr = static_cast<const char*>(src);
+    char* dstPtr = static_cast<char*>(dst);
+
+    int dstOffset = 0;
+    size_t paddingIndex = 0;
+
+    for (size_t i = 0; i < memberSizes.size(); ++i) {
+        // Insert padding if needed before this member
+        if (paddingIndex < paddings.size() && paddings[paddingIndex].offset == dstOffset) {
+            // Skip over padding in destination (leave uninitialized or zero if you prefer)
+            dstOffset += paddings[paddingIndex].size;
+            ++paddingIndex;
+        }
+
+        // Copy the member
+        std::memcpy(dstPtr + dstOffset, srcPtr, memberSizes[i]);
+
+        // Advance pointers
+        srcPtr += memberSizes[i];
+        dstOffset += memberSizes[i];
+    }
+
+    // Handle final padding (if any) — just skip, no data to copy
+    if (paddingIndex < paddings.size() && paddings[paddingIndex].offset == dstOffset) {
+        // Optionally: zero out final padding
+        // std::memset(dstPtr + dstOffset, 0, paddings[paddingIndex].size);
+        // But typically not needed — padding is unused.
+    }
+}
