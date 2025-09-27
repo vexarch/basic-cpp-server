@@ -9,33 +9,39 @@ using namespace std;
 class Controller {
 protected:
     string route;
-    virtual http::response Get(http::request& req) const {
+    virtual http::response Get(http::request& req) {
+        (void)req; // Used to silence the unused parameter warning at compile time
         return http::not_implemented();
     }
-    virtual http::response Post(http::request& req) const {
+    virtual http::response Post(http::request& req) {
+        (void)req; // Used to silence the unused parameter warning at compile time
         return http::not_implemented();
     }
-    virtual http::response Put(http::request& req) const {
+    virtual http::response Put(http::request& req) {
+        (void)req; // Used to silence the unused parameter warning at compile time
         return http::not_implemented();
     }
-    virtual http::response Patch(http::request& req) const {
+    virtual http::response Patch(http::request& req) {
+        (void)req; // Used to silence the unused parameter warning at compile time
         return http::not_implemented();
     }
-    virtual http::response Delete(http::request& req) const {
+    virtual http::response Delete(http::request& req) {
+        (void)req; // Used to silence the unused parameter warning at compile time
         return http::not_implemented();
     }
-    virtual http::response Options(http::request& req) const {
+    virtual http::response Options(http::request& req) {
+        (void)req; // Used to silence the unused parameter warning at compile time
         return http::not_implemented();
     }
 public:
     Controller(const string& route): route(route) {}
-    //virtual ~Controller() = default; // this line causes compile time errors
+    virtual ~Controller() = default;
     string get_route() const {
         return route;
     }
 
     // Basic handling for the http request
-    http::response handle(http::request& req) const {
+    http::response handle(http::request& req) {
         if (req.method == "GET") {
             return Get(req);
         } else if (req.method == "POST") {
