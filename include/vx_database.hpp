@@ -9,11 +9,10 @@
 #include <mutex>
 #include <shared_mutex>
 #include <atomic>
+#include <functional>
 #include "helpers.h"
 
 namespace fs = std::filesystem;
-
-#define FRAME_SIZE 4096
 
 enum class DataType {
     CHAR,
@@ -47,8 +46,8 @@ public:
 
     int get_row_size() const;
     std::vector<int> get_sizes() const;
-
     std::vector<column> get_columns() const;
+    std::vector<padding> calculate_paddings() const;
 
     // returns the schema in simple format | column1 | column2 |...
     std::string get_schema() const;
@@ -74,7 +73,7 @@ private:
     // Static constants
     static constexpr int MIN_FRAME_SIZE = 4096; // 4 KB
     static constexpr int MAX_FRAME_SIZE = 1048576; // 1 MB
-    static constexpr int CACHE_LT_S = 15; // Cache life time in seconds
+    static constexpr int CACHE_LT_S = 5; // Cache life time in seconds
     static constexpr int METADATA_LENGTH = 2048; // 2 KB
 
     // General constant infos
@@ -103,7 +102,7 @@ private:
     void initialize_file();
     void write_metadata();
     void read_metadata();
-    frame& add_frame();
+    void add_frame();
     void load_frame(frame& f);
     void unload_frame(frame& f);
     void flush_frame(frame& f);
@@ -121,7 +120,7 @@ public:
         return elements_count;
     }
 
-    // These functions assume that the element e is a struct that follows the same schema as the table
+    // These functions assume that the type T is a struct that follows the same schema as the table
 
     template <typename T>
     void add_element(const T& e) {
@@ -131,42 +130,37 @@ public:
             if (f->count < frame_capacity) {
                 load_frame(*f);
                 std::unique_lock<std::shared_mutex> lock(f->mutex);
-                char* ptr2 = f->data.get() + (f->count * element_size);
-                for (char* ptr1 = buffer.get(); ptr1 < buffer.get() + element_size; ptr1++, ptr2++) {
-                    *ptr2 = *ptr1;
-                }
+                std::memcpy(f->data.get() + (f->count * element_size), buffer.get(), element_size);
+                (f->count)++;
                 elements_count++;
-                f->count++;
                 return;
             }
         }
-        auto& f = add_frame();
-        load_frame(f);
-        std::unique_lock<std::shared_mutex> lock(f.mutex);
-        char* ptr2 = f.data.get() + (f.count * element_size);
-        for (char* ptr1 = buffer.get(); ptr1 < buffer.get() + element_size; ptr1++, ptr2++) {
-            *ptr2 = *ptr1;
-        }
+        add_frame();
+        auto& f = frames[frames.size() - 1];
+        load_frame(*f);
+        std::unique_lock<std::shared_mutex> lock(f->mutex);
+        std::memcpy(f->data.get() + (f->count * element_size), buffer.get(), element_size);
+        (f->count)++;
         elements_count++;
-        f.count++;
     }
 
     template <typename T>
-    inline void add_elements(const std::vector<T>& e) {
+    void add_elements(const std::vector<T>& e) {
         for (auto& x: e) add_element(x);
     }
 
     template <typename T>
     T get_element(int index) {
         if (index > elements_count) throw std::out_of_range("Element index out of table range");
+        T e;
         int count = 0;
         for (auto& f: frames) {
-            std::shared_lock<std::shared_mutex> lock(f->mutex);
             load_frame(*f);
+            std::shared_lock<std::shared_mutex> lock(f->mutex);
             count += f->count;
-            if (index <= count) {
-                T e;
-                unpack_struct(f->data.get() + (count - index) , &e, sizes, paddings);
+            if (index < count) {
+                unpack_struct(f->data.get() + ((f->count - (count - index)) * element_size) , &e, sizes, paddings);
                 return e;
             }
         }
@@ -176,37 +170,40 @@ public:
     // Could cause problems if the table contained too many rows
     template <typename T>
     std::vector<T> get_all() {
-        std::vector<T> result(elements_count);
-        int index = 0;
+        std::vector<T> result;
+        T* e = new T;
         for (auto& f: frames) {
-            std::shared_lock<std::shared_mutex> lock(f->mutex);
             load_frame(*f);
+            std::shared_lock<std::shared_mutex> lock(f->mutex);
+            auto ptr = f->data.get();
             for (int i = 0; i < f->count; i++) {
-                unpack_struct(f->data.get() + i * element_size, &result[i], sizes, paddings);
+                unpack_struct(ptr + (i * element_size), e, sizes, paddings);
+                result.push_back(*e);
             }
         }
         return result;
     }
 
     template <typename T>
-    T find_first(bool(*pred)(T)) {
+    T find_first(std::function<bool(T)> pred) {
         T e;
         for (auto& f: frames) {
-            std::shared_lock<std::shared_mutex> lock(f->mutex);
             load_frame(*f);
+            std::shared_lock<std::shared_mutex> lock(f->mutex);
             for (int i = 0; i < f->count; i++) {
                 unpack_struct(f->data.get() + i * element_size, &e, sizes, paddings);
                 if (pred(e)) return e;
             }
         }
+        throw std::runtime_error("Cannot find the element");
     }
 
     template <typename T>
     T pop_first(bool(*pred)(T)) {
         T e;
         for (auto& f: frames) {
-            std::shared_lock<std::shared_mutex> lock(f->mutex);
             load_frame(*f);
+            std::shared_lock<std::shared_mutex> lock(f->mutex);
             for (int i = 0; i < f->count; i++) {
                 char* ptr = f->data.get() + i * element_size;
                 unpack_struct(ptr, &e, sizes, paddings);
@@ -229,8 +226,8 @@ public:
         std::vector<T> result;
         T e;
         for (auto& f: frames) {
-            std::shared_lock<std::shared_mutex> lock(f->mutex);
             load_frame(*f);
+            std::shared_lock<std::shared_mutex> lock(f->mutex);
             for (int i = 0; i < f->count && result.size() < count; i++) {
                 char* ptr = f->data.get() + i * element_size;
                 unpack_struct(ptr, &e, sizes, paddings);
@@ -247,8 +244,8 @@ public:
         std::vector<T> result;
         T e;
         for (auto& f: frames) {
-            std::shared_lock<std::shared_mutex> lock(f->mutex);
             load_frame(*f);
+            std::shared_lock<std::shared_mutex> lock(f->mutex);
             for (int i = 0; i < f->count && result.size() < count; i++) {
                 char* ptr = f->data.get() + i * element_size;
                 unpack_struct(ptr, &e, sizes, paddings);
@@ -256,10 +253,12 @@ public:
                 if (pred(e)) {
                     lock.unlock();
                     std::unique_lock<std::shared_mutex> lock2(f->mutex);
-                    std::memmove(ptr, ptr + element_size, frame_size - (long)(ptr + element_size));
+                    std::memmove(ptr, ptr + element_size, frame_size - (i * element_size));
+                    lock2.unlock();
                     f->count--;
                     elements_count--;
                     result.push_back(e);
+                    lock.lock();
                 }
             }
             if (result.size() == count) break;
@@ -273,8 +272,8 @@ public:
         int c = 0;
         T e;
         for (auto& f: frames) {
-            std::shared_lock<std::shared_mutex> lock(f->mutex);
             load_frame(*f);
+            std::shared_lock<std::shared_mutex> lock(f->mutex);
             for (int i = 0; i < f->count && c < count; i++) {
                 char* ptr = f->data.get() + i * element_size;
                 unpack_struct(ptr, &e, sizes, paddings);
@@ -282,10 +281,12 @@ public:
                 if (pred(e)) {
                     lock.unlock();
                     std::unique_lock<std::shared_mutex> lock2(f->mutex);
-                    std::memmove(ptr, ptr + element_size, frame_size - (long)(ptr + element_size));
+                    std::memmove(ptr, ptr + element_size, frame_size - (i * element_size));
+                    lock2.unlock();
                     f->count--;
                     elements_count--;
                     c++;
+                    lock.lock();
                 }
             }
             if (c >= count) break;
@@ -322,10 +323,12 @@ public:
                 if (pred(e)) {
                     lock.unlock();
                     std::unique_lock<std::shared_mutex> lock2(f->mutex);
-                    std::memmove(ptr, ptr + element_size, frame_size - (long)(ptr + element_size));
+                    std::memmove(ptr, ptr + element_size, frame_size - (i * element_size));
+                    lock2.unlock();
                     f->count--;
                     elements_count--;
                     result.push_back(e);
+                    lock.lock();
                 }
             }
         }
@@ -345,9 +348,11 @@ public:
                 if (pred(e)) {
                     lock.unlock();
                     std::unique_lock<std::shared_mutex> lock2(f->mutex);
-                    std::memmove(ptr, ptr + element_size, frame_size - (long)(ptr + element_size));
+                    std::memmove(ptr, ptr + element_size, frame_size - (i * element_size));
+                    lock2.unlock();
                     f->count--;
                     elements_count--;
+                    lock.lock();
                 }
             }
         }

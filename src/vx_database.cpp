@@ -149,8 +149,50 @@ std::string Schema::get_schema() const {
             type += "[" + std::to_string(c.count) + "]";
         oss << c.name << ":" << type << "|";
     }
-            
+
     return oss.str();
+}
+
+std::vector<padding> Schema::calculate_paddings() const {
+    std::vector<padding> paddings;
+
+    int current_offset = 0;
+    int max_alignment = 1;
+
+    for (auto& c: columns) {
+        int alignment_requirement = 1;
+        switch (c.type) {
+        case DataType::WCHAR:
+        case DataType::INT16:
+            alignment_requirement = 2;
+            break;
+        case DataType::INT32:
+        case DataType::FLOAT32:
+            alignment_requirement = 4;
+            break;
+        case DataType::INT64:
+        case DataType::FLOAT64:
+            alignment_requirement = 8;
+            break;
+        }
+
+        int alignment = alignment_requirement < 8 ? alignment_requirement : 8;
+
+        max_alignment = max_alignment > alignment ? max_alignment : alignment;
+
+        int aligned_offset = (current_offset + alignment - 1) / alignment * alignment;
+
+        if (aligned_offset > current_offset)
+            paddings.push_back({current_offset, aligned_offset - current_offset});
+
+        current_offset = aligned_offset + (alignment_requirement * c.count);
+    }
+
+    int struct_size = (current_offset + max_alignment - 1) / max_alignment * max_alignment;
+    if (struct_size > current_offset)
+        paddings.push_back({current_offset, struct_size - current_offset});
+
+    return paddings;
 }
 
 Table::Table(const std::string& name): name(name), file_name(name + "_table.db") {
@@ -168,9 +210,9 @@ Table::Table(const std::string& name, const Schema& schema): name(name), file_na
             columns = schema.get_columns();
             element_size = schema.get_row_size();
             sizes = schema.get_sizes();
-            paddings = calculate_struct_padding(sizes);
+            paddings = schema.calculate_paddings();
             frame_size = element_size * 64;
-            if (frame_size < MIN_FRAME_SIZE) frame_size = MIN_FRAME_SIZE;
+            if (frame_size <= MIN_FRAME_SIZE) frame_size = MIN_FRAME_SIZE;
             else if (element_size < MAX_FRAME_SIZE) frame_size = MAX_FRAME_SIZE;
             else throw std::runtime_error("Element size too big");
             frame_capacity = frame_size / element_size;
@@ -187,9 +229,9 @@ Table::Table(const std::string& name, const Schema& schema): name(name), file_na
         columns = schema.get_columns();
         element_size = schema.get_row_size();
         sizes = schema.get_sizes();
-        paddings = calculate_struct_padding(sizes);
+        paddings = schema.calculate_paddings();
         frame_size = element_size * 64;
-        if (frame_size < MIN_FRAME_SIZE) frame_size = MIN_FRAME_SIZE;
+        if (frame_size <= MIN_FRAME_SIZE) frame_size = MIN_FRAME_SIZE;
         else if (element_size < MAX_FRAME_SIZE) frame_size = MAX_FRAME_SIZE;
         else throw std::runtime_error("Element size too big");
         frame_capacity = frame_size / element_size;
@@ -207,9 +249,9 @@ Table::Table(const std::string& name, const std::vector<column>& columns): name(
             this->columns = columns;
             element_size = schema.get_row_size();
             sizes = schema.get_sizes();
-            paddings = calculate_struct_padding(sizes);
+            paddings = schema.calculate_paddings();
             frame_size = element_size * 64;
-            if (frame_size < MIN_FRAME_SIZE) frame_size = MIN_FRAME_SIZE;
+            if (frame_size <= MIN_FRAME_SIZE) frame_size = MIN_FRAME_SIZE;
             else if (element_size < MAX_FRAME_SIZE) frame_size = MAX_FRAME_SIZE;
             else throw std::runtime_error("Element size too big");
             frame_capacity = frame_size / element_size;
@@ -228,9 +270,9 @@ Table::Table(const std::string& name, const std::vector<column>& columns): name(
         this->columns = columns;
         element_size = schema.get_row_size();
         sizes = schema.get_sizes();
-        paddings = calculate_struct_padding(sizes);
+        paddings = schema.calculate_paddings();
         frame_size = element_size * 64;
-        if (frame_size < MIN_FRAME_SIZE) frame_size = MIN_FRAME_SIZE;
+        if (frame_size <= MIN_FRAME_SIZE) frame_size = MIN_FRAME_SIZE;
         else if (element_size < MAX_FRAME_SIZE) frame_size = MAX_FRAME_SIZE;
         else throw std::runtime_error("Element size too big");
         frame_capacity = frame_size / element_size;
@@ -248,6 +290,7 @@ void Table::initialize_file() {
     file.close();
     file.open(file_name, std::ios::out);
     file.close();
+    fs::remove(file_name);
     file.open(file_name, std::ios::binary | std::ios::in | std::ios::out);
     write_metadata();
 }
@@ -265,53 +308,52 @@ void Table::write_metadata() {
 
     std::string schema = Schema(columns).get_schema();
     int schema_size = schema.length();
-    //int frame_size = frame_capacity;
     int frames_count = frames.size();
-    /*int elements_count = 0;
-    for (auto& f: frames) {
-        std::shared_lock<std::shared_mutex> lock(f->mutex);
-        elements_count += f->count;
-    }*/
+
     if (schema_size + 16 > METADATA_LENGTH) throw std::runtime_error("Metadata too big");
+
     file.seekp(0, std::ios::beg);
-    file.write((char*)&schema_size, 4);
-    file.write(schema.data(), schema_size);
-    file.write((char*)&frame_size, 4);
-    file.write((char*)&frames_count, 4);
-    file.write((char*)&elements_count, 4);
-    int pad = 0;
-    if ((pad = METADATA_LENGTH - (schema_size + 16)) > 0) {
-        char* b = new char[pad];
-        for (char* p = b; p < b + pad; p++) *p = 0;
-        file.write(b, pad);
-        delete[] b;
-    }
+
+    file.write((char*)&schema_size, 4); // schema length
+    file.write(schema.data(), schema_size); // schema
+    file.write((char*)&frame_size, 4); // frame size
+    file.write((char*)&frames_count, 4); // frames count
+    file.write((char*)&elements_count, 4); // elements count
 }
 
 void Table::read_metadata() {
     file.seekg(0, std::ios::beg);
+
     int schema_size;
+    // reads the schema size
     file.read((char*)&schema_size, 4);
-    if (schema_size == 0 || schema_size + 16 > METADATA_LENGTH) throw std::runtime_error("Invalid metadata: metadata too big");
+    if (schema_size <= 0) throw std::runtime_error("Invalid metadata: invalid schema size");
+    if (schema_size + 16 > METADATA_LENGTH) throw std::runtime_error("Invalid metadata: metadata too big");
 
     std::string headers; // the columns names and types
+    // reads the schema
     headers.resize(schema_size);
     file.read(headers.data(), schema_size);
+
     // Make schema to use helper functions
     Schema schema(headers);
+
     columns = schema.get_columns();
     element_size = schema.get_row_size();
     sizes = schema.get_sizes();
-    paddings = calculate_struct_padding(sizes);
+    paddings = schema.calculate_paddings();
 
+    // reads frame size
     file.read((char*)&frame_size, 4);
     if (frame_size > MAX_FRAME_SIZE) throw std::runtime_error("Invalid metadata: frame size too big");
     if (frame_size < MIN_FRAME_SIZE) throw std::runtime_error("Invalid metadata: frame size too small");
 
+    // calculate frame capacity
     frame_capacity = frame_size / element_size;
     if (frame_capacity <= 0) throw std::runtime_error("Invalid metadata: frame capacity too small <= 0");
 
     int frames_count = 0;
+    // reads frames count and elements count
     file.read((char*)&frames_count, 4);
     file.read((char*)&elements_count, 4);
     if (frames_count < 0) throw std::runtime_error("Invalid metadata: frames count must be a positive number");
@@ -327,42 +369,46 @@ void Table::read_metadata() {
     }
 }
 
-Table::frame& Table::add_frame() {
+void Table::add_frame() {
     auto f = std::make_unique<frame>();
     f->file_pos = frames.size() * (frame_size + 4) + METADATA_LENGTH + 4;
-    file.seekp(f->file_pos, std::ios::beg);
-    char* b = new char[frame_size + 4];
-    *(int*)b = 0;
-    file.write(b, frame_size + 4);
-    delete[] b;
+    file.seekp(f->file_pos - 4, std::ios::beg);
+
+    file.write((char*)&(f->count), 4);
+
     frames.push_back(std::move(f));
-    return *frames[frames.size() - 1];
 }
 
 void Table::load_frame(frame& f) {
     if (!f.data) {
+        // frame lock
         std::unique_lock<std::shared_mutex> lock(f.mutex);
+        // data buffer
         std::unique_ptr<char[]> buffer = std::make_unique<char[]>(frame_size);
+        // file lock
         std::shared_lock<std::shared_mutex> file_lock(file_mutex);
+
         file.seekg(f.file_pos - 4, std::ios::beg);
         file.read((char*)&(f.count), 4);
         file.read(buffer.get(), frame_size);
         f.data = std::move(buffer);
         frame* ptr = &f;
         std::thread([this, ptr]() {
-            while (!(ptr->accessed.load())) {
+            while ((ptr->accessed.load())) {
                 ptr->accessed.store(false);
                 sleep(CACHE_LT_S);
             }
-            this->unload_frame((*ptr));
+            //this->unload_frame((*ptr));
         }).detach();
     }
+    f.accessed.store(true);
 }
 
 void Table::unload_frame(frame& f) {
     if (f.data) {
         flush_frame(f);
         std::unique_lock<std::shared_mutex> lock(f.mutex);
+        f.accessed.store(false);
         f.data.reset();
     }
 }
@@ -384,16 +430,13 @@ void Table::flush_all() {
 
 void Table::clear() {
     for (auto& f: frames) {
-        std::unique_lock<std::shared_mutex> lock(f->mutex);
         load_frame(*f);
+        std::unique_lock<std::shared_mutex> lock(f->mutex);
         elements_count -= f->count;
         f->count = 0;
         std::fill<char*, char>(f->data.get(), f->data.get() + frame_size, 0);
     }
-    std::unique_lock<std::shared_mutex> lock(file_mutex);
-    file.close();
-    fs::remove(file_name);
-    initialize_file();
     frames.clear();
-    flush_all();
+    std::unique_lock<std::shared_mutex> lock(file_mutex);
+    initialize_file();
 }
