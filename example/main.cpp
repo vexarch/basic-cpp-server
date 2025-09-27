@@ -16,7 +16,7 @@ vector<Controller*> controllers;
 class ProductsController: public Controller {
 private:
     vector<string> products = {"Intel Core i9-13900K", "AMD Ryzen 9 7950X", "NVIDIA GeForce RTX 4090", "AMD Radeon RX 7900 XTX", "Corsair Vengeance DDR5 32GB", "G.Skill Trident Z5 RGB 32GB", "Samsung 990 PRO 2TB SSD", "WD Black SN850X 2TB", "ASUS ROG Strix Z790-E", "MSI MPG X670E Carbon", "Corsair RM850x PSU"};
-    http::response Get(http::request &req) const override {
+    http::response Get(http::request &req) override {
         if (req.uri.route.size() != 1)
             return http::not_found();
         nlohmann::json j = products;
