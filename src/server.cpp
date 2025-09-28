@@ -57,6 +57,7 @@ Server::Server(const std::string& host, uint16_t port) {
 
 Server::~Server() {
     terminate();
+    for (auto& c: controllers) delete c;
 }
 
 void Server::start_server_loop() {
