@@ -213,8 +213,7 @@ Table::Table(const std::string& name, const Schema& schema): name(name), file_na
             paddings = schema.calculate_paddings();
             frame_size = element_size * 64;
             if (frame_size <= MIN_FRAME_SIZE) frame_size = MIN_FRAME_SIZE;
-            else if (element_size < MAX_FRAME_SIZE) frame_size = MAX_FRAME_SIZE;
-            else throw std::runtime_error("Element size too big");
+            else if (!(frame_size < MAX_FRAME_SIZE)) throw std::runtime_error("Element size too big");
             frame_capacity = frame_size / element_size;
             initialize_file();
         } else {
@@ -232,8 +231,7 @@ Table::Table(const std::string& name, const Schema& schema): name(name), file_na
         paddings = schema.calculate_paddings();
         frame_size = element_size * 64;
         if (frame_size <= MIN_FRAME_SIZE) frame_size = MIN_FRAME_SIZE;
-        else if (element_size < MAX_FRAME_SIZE) frame_size = MAX_FRAME_SIZE;
-        else throw std::runtime_error("Element size too big");
+        else if (!(frame_size < MAX_FRAME_SIZE)) throw std::runtime_error("Element size too big");
         frame_capacity = frame_size / element_size;
         initialize_file();
     }
@@ -252,8 +250,7 @@ Table::Table(const std::string& name, const std::vector<column>& columns): name(
             paddings = schema.calculate_paddings();
             frame_size = element_size * 64;
             if (frame_size <= MIN_FRAME_SIZE) frame_size = MIN_FRAME_SIZE;
-            else if (element_size < MAX_FRAME_SIZE) frame_size = MAX_FRAME_SIZE;
-            else throw std::runtime_error("Element size too big");
+            else if (!(frame_size < MAX_FRAME_SIZE)) throw std::runtime_error("Element size too big");
             frame_capacity = frame_size / element_size;
             initialize_file();
         } else {
@@ -273,8 +270,7 @@ Table::Table(const std::string& name, const std::vector<column>& columns): name(
         paddings = schema.calculate_paddings();
         frame_size = element_size * 64;
         if (frame_size <= MIN_FRAME_SIZE) frame_size = MIN_FRAME_SIZE;
-        else if (element_size < MAX_FRAME_SIZE) frame_size = MAX_FRAME_SIZE;
-        else throw std::runtime_error("Element size too big");
+        else if (!(frame_size < MAX_FRAME_SIZE)) throw std::runtime_error("Element size too big");
         frame_capacity = frame_size / element_size;
         initialize_file();
     }
@@ -407,10 +403,10 @@ void Table::unload_frame(frame& f) {
         f.accessed.store(false);
         sleep(CACHE_LT_S);
     }
-    f.accessed.store(false);
     if (f.data) {
         flush_frame(f);
         std::unique_lock<std::shared_mutex> lock(f.mutex);
+        f.count = 0;
         f.data.reset();
     }
 }
@@ -425,7 +421,7 @@ void Table::flush_frame(frame& f) {
         // but it could cause errors and bugs if the file was realy damaged
 
         file.seekp(f.file_pos - 4, std::ios::beg);
-        file.write((char*)&(f.count), 4);
+        file.write((char*)(&f.count), 4);
         file.write(f.data.get(), frame_size);
     }
 }
