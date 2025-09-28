@@ -288,9 +288,9 @@ Table::~Table() {
 
 void Table::initialize_file() {
     file.close();
+    fs::remove(file_name);
     file.open(file_name, std::ios::out);
     file.close();
-    fs::remove(file_name);
     file.open(file_name, std::ios::binary | std::ios::in | std::ios::out);
     write_metadata();
 }
@@ -380,6 +380,7 @@ void Table::add_frame() {
 }
 
 void Table::load_frame(frame& f) {
+    f.accessed.store(true);
     if (!f.data) {
         // frame lock
         std::unique_lock<std::shared_mutex> lock(f.mutex);
@@ -388,27 +389,28 @@ void Table::load_frame(frame& f) {
         // file lock
         std::shared_lock<std::shared_mutex> file_lock(file_mutex);
 
+        // file.clear resets the file state
+        file.clear(); // this line is to solve the write errors
+        // but it could cause errors and bugs if the file was realy damaged
+
         file.seekg(f.file_pos - 4, std::ios::beg);
         file.read((char*)&(f.count), 4);
         file.read(buffer.get(), frame_size);
         f.data = std::move(buffer);
-        frame* ptr = &f;
-        std::thread([this, ptr]() {
-            while ((ptr->accessed.load())) {
-                ptr->accessed.store(false);
-                sleep(CACHE_LT_S);
-            }
-            //this->unload_frame((*ptr));
-        }).detach();
+        //frame* ptr = &f;
+        std::thread(&Table::unload_frame, this, std::ref(f)).detach();
     }
-    f.accessed.store(true);
 }
 
 void Table::unload_frame(frame& f) {
+    while ((f.accessed.load())) {
+        f.accessed.store(false);
+        sleep(CACHE_LT_S);
+    }
+    f.accessed.store(false);
     if (f.data) {
         flush_frame(f);
         std::unique_lock<std::shared_mutex> lock(f.mutex);
-        f.accessed.store(false);
         f.data.reset();
     }
 }
@@ -417,6 +419,11 @@ void Table::flush_frame(frame& f) {
     if (f.data) {
         std::unique_lock<std::shared_mutex> lock(f.mutex);
         std::unique_lock<std::shared_mutex> file_lock(file_mutex);
+
+        // file.clear resets the file state
+        file.clear(); // this line is to solve the write errors
+        // but it could cause errors and bugs if the file was realy damaged
+
         file.seekp(f.file_pos - 4, std::ios::beg);
         file.write((char*)&(f.count), 4);
         file.write(f.data.get(), frame_size);
