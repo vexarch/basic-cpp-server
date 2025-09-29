@@ -110,7 +110,8 @@ void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address) 
 
     try {
     keep:
-        string input = read_to_end(socket_fd);
+        res.reset(new http::response(http::not_found()));
+        std::string input = read_to_end(socket_fd);
         http::request req = http::parse_request(input);
 
         std::cout << '[' << get_time()
@@ -121,7 +122,7 @@ void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address) 
                   << " request"
                   << std::endl;
 
-        string uri = "";
+        std::string uri = "";
         for (auto& r: req.uri.route)
             uri += "/" + r ;
 
@@ -138,21 +139,19 @@ void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address) 
                     res.reset(new http::response(c->handle(req)));
                 }
             }
-        } else {
-            res.reset(new http::response(http::not_found()));
         }
 
         if (req.headers.find("Connection") != req.headers.end() &&
-            req.headers["Connection"] == "keep-alive") {
+            req.headers["Connection"] == "keep-alive" &&
+            res->status_code != 404) {
             keep_alive = true;
             res->headers["Connection"] = "keep-alive";
         } else {
         	keep_alive = false;
         	res->headers["Connection"] = "close";
         }
-            
 
-        string res_str = http::serialize_response(*res);
+        std::string res_str = http::serialize_response(*res);
         write(socket_fd, res_str.data(), res_str.size());
 
         if (keep_alive) goto keep;
@@ -178,7 +177,7 @@ void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address) 
 }
 
 void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr_in> address) {
-    std::unique_ptr<http::response> res = std::make_unique<http::response>();
+    std::unique_ptr<http::response> res = std::make_unique<http::response>(http::not_found());
     bool keep_alive = false;
 
     std::string ip = ip_to_str(address->sin_addr.s_addr);
@@ -190,6 +189,7 @@ void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr
 
     try {
     keep:
+        res.reset(new http::response(http::not_found()));
         string input = read_to_end(ssl, socket_fd);
         http::request req = http::parse_request(input);
 
@@ -208,7 +208,6 @@ void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr
         if (uri.empty())
             uri = "/";
 
-
         if (static_files.find(uri) != static_files.end()) {
             res.reset(new http::response(http::ok(get_content_type(uri), static_files[uri].data())));
         } else if (uri == "/" && static_files.find("/index.html") != static_files.end()) {
@@ -219,8 +218,6 @@ void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr
                     res.reset(new http::response(c->handle(req)));
                 }
             }
-        } else {
-            res.reset(new http::response(http::not_found()));
         }
 
         if (req.headers.find("Connection") != req.headers.end() &&
