@@ -8,10 +8,11 @@ A minimal, lightweight HTTP server written in C++. Designed for learning how web
 - Rich built-in library for customizable HTTP responses (status, headers, body)
 - HTTPS support (OpenSSL)
 - Static file serving with automatic MIME type detection
+- Built-in simple database classes to make tables
 
 ## Requirements
 
-- POSIX-compatible system (Linux, Unix, WSL)
+- POSIX-compatible system (Linux, Unix, WSL) 64-bit
 - C++ compiler
 - Make
 - OpenSSL >= 3
@@ -153,6 +154,58 @@ Test:
 curl http://127.0.0.1:1234/
 ```
 
+### Database And Tables
+
+The project offers a built-in class to make tables with automatic loading / unloading and efficient cache store, to use it include the header:
+
+```cpp
+#include "vx_database.hpp"
+```
+
+Make a schema for the table:
+
+```cpp
+// Method 1
+Schema s;
+s.add_column("id", DataType::INT32);
+s.add_column("name", DataType::CHAR, 32); // the last argument is used for arrays
+
+// Method 2
+Schema s("|id:INT32|name:CHAR[32]|");
+```
+
+Make a struct that matches the schema:
+
+```cpp
+struct user {
+    int id;
+    char name[64]; // the table only supports raw strings (no char* and std::string)
+};
+```
+
+Create a table:
+
+```cpp
+Table t("users", s); // s -> the schema from earlier
+
+t.add_element<user>({1, "admin"});
+t.add_element<user>({2, "user"});
+```
+
+Navigate the table date:
+```cpp
+auto u = t.get_element<user>(0); // returns the user on index 0
+
+u = t.find_first<user>([](user s) -> bool {return s.id == 1}); // return the first user with id 1
+
+u = t.pop_all<user>([](user s) -> bool {return true})[0]; // removes all the elements from the table and return it as a vector<user>
+
+t.remove<user>([](user s) -> bool {return true}, 10); // removes the first 10 elements where the condition is true
+
+t.clear(); // reinitialize the table erasing all its data
+```
+
+
 ## Contributing
 
 Contributions are welcome! Please fork the repo and submit a pull request:
@@ -166,6 +219,10 @@ Contributions are welcome! Please fork the repo and submit a pull request:
 ## Known Issues
 
 - Server may return OK instead of NOT FOUND for missing static files
+- The distractors of controllers are not called when exiting
+- Tables are static and lack the support for dynamic adding and removing columns
+- Tables template based functions (add_element<T>, find<T>, ...) have so much overhead because of the continuos packing and unpacking of the data since it store it as one packed buffer without padding
+- No built-in sorting function for tables
 - Project is not fully tested, expect possible bugs
 
 ## License
