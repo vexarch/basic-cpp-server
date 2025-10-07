@@ -25,7 +25,6 @@
 
 #define BUFFER_SIZE 16384
 
-using namespace std;
 namespace fs = std::filesystem;
 
 Server::Server(const std::string& host, uint16_t port) {
@@ -88,8 +87,8 @@ void Server::start_server_loop() {
                 connections[con_index].ssl = ssl;
                 std::thread(&Server::handle_tls_client, this, ssl, new_socket, std::move(address)).detach();
             } else {
-                cout << "Failed to establish tls connection with client: " <<
-                    (unsigned char)(address->sin_addr.s_addr) << endl;
+                std::cout << "Failed to establish tls connection with client: " <<
+                    (unsigned char)(address->sin_addr.s_addr) << std::endl;
                 connections[con_index].fd = -1;
             }
         } else
@@ -142,8 +141,7 @@ void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address) 
         }
 
         if (req.headers.find("Connection") != req.headers.end() &&
-            req.headers["Connection"] == "keep-alive" &&
-            res->status_code != 404) {
+            req.headers["Connection"] == "keep-alive") {
             keep_alive = true;
             res->headers["Connection"] = "keep-alive";
         } else {
@@ -190,7 +188,7 @@ void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr
     try {
     keep:
         res.reset(new http::response(http::not_found()));
-        string input = read_to_end(ssl, socket_fd);
+        std::string input = read_to_end(ssl, socket_fd);
         http::request req = http::parse_request(input);
 
         std::cout << '[' << get_time()
@@ -201,7 +199,7 @@ void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr
                   << " request"
                   << std::endl;
 
-        string uri = "";
+        std::string uri = "";
         for (auto& r: req.uri.route)
             uri += "/" + r ;
 
@@ -229,7 +227,7 @@ void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr
             res->headers["Connection"] = "close";
         }
 
-        string res_str = http::serialize_response(*res);
+        std::string res_str = http::serialize_response(*res);
         SSL_write(ssl, res_str.data(), res_str.size());
 
         if (keep_alive) goto keep;
@@ -268,15 +266,15 @@ void Server::listen_for_clients(int max) {
     start_server_loop();
 }
 
-void Server::use_static_files(const string &dir) {
+void Server::use_static_files(const std::string &dir) {
     static_files = get_all_files(dir);
 }
 
-void Server::use_controllers(const vector<Controller*>& controllers) {
+void Server::use_controllers(const std::vector<Controller*>& controllers) {
     this->controllers = controllers;
 }
 
-void Server::use_https(const string &cert_file, const string &key_file) {
+void Server::use_https(const std::string &cert_file, const std::string &key_file) {
     use_tls = true;
     init_openssl();
     ssl_ctx = create_context();

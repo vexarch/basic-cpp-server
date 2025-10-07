@@ -6,12 +6,8 @@
 #include <arpa/inet.h>
 #include <vector>
 #include <map>
-#include <atomic>
-#include <set>
 #include <openssl/ssl.h>
 #include "controller.h"
-
-using namespace std;
 
 struct connection {
     int fd;
@@ -23,14 +19,14 @@ class Server
 private:
     int fd;
     sockaddr_in address;
-    vector<connection> connections; // Stores all connections file descriptors for proper shutdown
+    std::vector<connection> connections; // Stores all connections file descriptors for proper shutdown
     bool running = false;
 
     bool use_tls = false;
     SSL_CTX* ssl_ctx;
 
-    map<string, vector<char>> static_files;
-    vector<Controller*> controllers;
+    std::map<std::string, std::vector<char>> static_files;
+    std::vector<Controller*> controllers;
 
     void start_server_loop();
     void handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address);
@@ -39,9 +35,9 @@ public:
     Server(const std::string& host, uint16_t port);
     ~Server();
     void listen_for_clients(int max = 100);
-    void use_static_files(const string& dir = "wwwroot");
-    void use_controllers(const vector<Controller*>& controllers);
-    void use_https(const string& cert_file, const string& key_file);
+    void use_static_files(const std::string& dir = "wwwroot");
+    void use_controllers(const std::vector<Controller*>& controllers);
+    void use_https(const std::string& cert_file, const std::string& key_file);
     void terminate();
 };
 
