@@ -20,7 +20,7 @@ inline SSL_CTX* create_context() {
     const SSL_METHOD* method = TLS_server_method();
     SSL_CTX* ctx = SSL_CTX_new(method);
     if (!ctx) {
-        std::cerr << "Unable to create ssl context" << endl;
+        std::cerr << "Unable to create ssl context" << std::endl;
         ERR_print_errors_fp(stderr);
         exit(EXIT_FAILURE);
     }
