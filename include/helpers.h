@@ -20,6 +20,8 @@ std::map<std::string, std::vector<char>> get_all_files(const std::string& dir);
 // timeout in seconds
 std::string read_to_end(int fd, int timeout = 10);
 
+// Reads data using an encrypted file descriptor untile no data left
+// timeout in seconds
 std::string read_to_end(SSL* ssl, int fd, int timeout = 10);
 
 // returns the MIME content type
