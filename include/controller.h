@@ -4,11 +4,9 @@
 #include "http.hpp"
 #include <string>
 
-using namespace std;
-
 class Controller {
 protected:
-    string route;
+    std::string route;
     virtual http::response Get(http::request& req) {
         (void)req; // Used to silence the unused parameter warning at compile time
         return http::not_implemented();
@@ -34,14 +32,14 @@ protected:
         return http::not_implemented();
     }
 public:
-    Controller(const string& route): route(route) {}
+    Controller(const std::string& route): route(route) {}
     virtual ~Controller() = default;
-    string get_route() const {
+    std::string get_route() const {
         return route;
     }
 
     // Basic handling for the http request
-    http::response handle(http::request& req) {
+    virtual http::response handle(http::request& req) {
         if (req.method == "GET") {
             return Get(req);
         } else if (req.method == "POST") {
