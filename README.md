@@ -168,10 +168,11 @@ Make a schema for the table:
 // Method 1
 Schema s;
 s.add_column("id", DataType::INT32);
-s.add_column("name", DataType::CHAR, 32); // the last argument is used for arrays
+s.add_column("name", DataType::CHAR, 16); // the last argument is used for arrays
+s.add_column("description", DataType::STRING);
 
 // Method 2
-Schema s("|id:INT32|name:CHAR[32]|");
+Schema s("|id:INT32|name:CHAR[32]|description:STRING");
 ```
 
 Make a struct that matches the schema:
@@ -179,28 +180,29 @@ Make a struct that matches the schema:
 ```cpp
 struct user {
     int id;
-    char name[64]; // the table only supports raw strings (no char* and std::string)
+    char name[16];
+    std::string description;
 };
 ```
 
 Create a table:
 
 ```cpp
-Table t("users", s); // s -> the schema from earlier
+TypedTable<user> t("users", s); // s -> the schema from earlier
 
-t.add_element<user>({1, "admin"});
-t.add_element<user>({2, "user"});
+t.add_element({1, "admin", "add - remove - baned access"});
+t.add_element({2, "user", "read - comment access"});
 ```
 
 Navigate the table date:
 ```cpp
-auto u = t.get_element<user>(0); // returns the user on index 0
+auto u = t.get_element(0); // returns the user on index 0
 
-u = t.find_first<user>([](user s) -> bool {return s.id == 1}); // return the first user with id 1
+u = t.find_first([](user s) -> bool {return s.id == 1}); // return the first user with id 1
 
-u = t.pop_all<user>([](user s) -> bool {return true})[0]; // removes all the elements from the table and return it as a vector<user>
+u = t.pop_all([](user s) -> bool {return true})[0]; // removes all the elements from the table and return it as a vector<user>
 
-t.remove<user>([](user s) -> bool {return true}, 10); // removes the first 10 elements where the condition is true
+t.remove([](user s) -> bool {return true}, 10); // removes the first 10 elements where the condition is true
 
 t.clear(); // reinitialize the table erasing all its data
 ```
