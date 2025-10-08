@@ -12,8 +12,11 @@
 #include <map>
 #include <unordered_map>
 #include <algorithm>
+#include <type_traits>
 #include <vector>
 #include <string>
+#include <memory>
+#include <mutex>
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -56,22 +59,21 @@ Server::Server(const std::string& host, uint16_t port) {
 
 Server::~Server() {
     terminate();
-    for (auto& c: controllers) delete c;
 }
 
 void Server::start_server_loop() {
     int new_socket;
     socklen_t al = sizeof(address);
-    int con_index;
+    //int con_index;
     while (running) {
-        con_index = -1;
+        /*con_index = -1;
         for (int i = 0; i < connections.size(); i++) {
             if (connections[i].fd == -1) {
                 con_index = i;
                 break;
             }
-        }
-        if (con_index == -1) {
+        }*/
+        if (connections.size() >= max_connections) {
             // throw runtime_error("Too many connections");
             usleep(100000); // Sleep for 0.1 second
             continue;
@@ -80,23 +82,25 @@ void Server::start_server_loop() {
         if ((new_socket = accept(fd, (struct sockaddr*)address.get(), &al)) < 0) {
             continue;
         }
-        connections[con_index].fd = new_socket;
+        std::lock_guard<std::mutex> lock(connections_mutex);
+        connections.push_back({new_socket, nullptr});
+        std::list<connection>::iterator it = std::prev(connections.end());
         if (use_tls) {
             SSL* ssl;
             if (establish_connection(&ssl, ssl_ctx, new_socket)) {
-                connections[con_index].ssl = ssl;
-                std::thread(&Server::handle_tls_client, this, ssl, new_socket, std::move(address)).detach();
+                it->ssl = ssl;
+                std::thread(&Server::handle_tls_client, this, ssl, new_socket, std::move(address), it).detach();
             } else {
                 std::cout << "Failed to establish tls connection with client: " <<
                     (unsigned char)(address->sin_addr.s_addr) << std::endl;
-                connections[con_index].fd = -1;
+                connections.erase(it);
             }
         } else
-            std::thread(&Server::handle_client, this, new_socket, std::move(address)).detach();
+            std::thread(&Server::handle_client, this, new_socket, std::move(address), it).detach();
     }
 }
 
-void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address) {
+void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address, std::list<connection>::iterator it) {
     std::unique_ptr<http::response> res = std::make_unique<http::response>();
     bool keep_alive = false;
 
@@ -160,13 +164,10 @@ void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address) 
               << std::endl;
     }
 
-    for (connection& c: connections) {
-        if (c.fd == socket_fd) {
-            c.fd = -1;
-            break;
-        }
-    }
     close(socket_fd);
+
+    std::lock_guard<std::mutex> lock(connections_mutex);
+    connections.erase(it);
 
     std::cout << '[' << get_time()
               << "] Client disconnected: "
@@ -174,7 +175,7 @@ void Server::handle_client(int socket_fd, std::unique_ptr<sockaddr_in> address) 
               << std::endl;
 }
 
-void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr_in> address) {
+void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr_in> address, std::list<connection>::iterator it) {
     std::unique_ptr<http::response> res = std::make_unique<http::response>(http::not_found());
     bool keep_alive = false;
 
@@ -238,15 +239,11 @@ void Server::handle_tls_client(SSL* ssl, int socket_fd, std::unique_ptr<sockaddr
               << std::endl;
     }
 
-    for (connection& c: connections) {
-        if (c.fd == socket_fd) {
-            SSL_shutdown(c.ssl);
-            SSL_free(c.ssl);
-            c.fd = -1;
-            break;
-        }
-    }
     close(socket_fd);
+    SSL_shutdown(it->ssl);
+    SSL_free(it->ssl);
+    std::lock_guard<std::mutex> lock(connections_mutex);
+    connections.erase(it);
 
     std::cout << '[' << get_time()
               << "] Client disconnected: "
@@ -258,20 +255,12 @@ void Server::listen_for_clients(int max) {
     if (listen(fd, max))
         throw std::runtime_error("Can not listen for incoming connections");
     running = true;
-    connections.resize(max);
-    connection* base_ptr = connections.data();
-    for (connection* i = base_ptr; i < base_ptr + max; i++) {
-        i->fd = -1;
-    }
+    connections.clear();
     start_server_loop();
 }
 
 void Server::use_static_files(const std::string &dir) {
     static_files = get_all_files(dir);
-}
-
-void Server::use_controllers(const std::vector<Controller*>& controllers) {
-    this->controllers = controllers;
 }
 
 void Server::use_https(const std::string &cert_file, const std::string &key_file) {
