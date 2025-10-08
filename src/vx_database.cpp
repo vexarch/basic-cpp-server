@@ -772,6 +772,8 @@ Table::query_result Table::add(const std::string& e) {
     const char* beg = nullptr;
     std::string val;
 
+    std::vector<std::string> strings;
+
     for (const char* i = e.data(); i < e.data() + e.length(); i++) {
         if (*i != '(' && *i != ' ' && quot == '\0') {
             break;
@@ -924,6 +926,33 @@ Table::query_result Table::add(const std::string& e) {
                     }
                     break;
 
+                case DataType::STRING:
+                {
+                    const char* beg = nullptr;
+                    const char* end = nullptr;
+                    for (const char* i = last; i < x.data() + x.length(); i++) {
+                        if (*i == '\'' || *i == '"') {
+                            if (beg != nullptr && *(beg - 1) == *i) {
+                                end = i;
+                            } else if (beg == nullptr) {
+                                beg = i + 1;
+                            }
+                        } else if (*i == ',' && end != nullptr) {
+                            last = i + 1;
+                            break;
+                        }
+                    }
+                    if (beg == nullptr || end == nullptr)
+                        throw std::invalid_argument("Invalid query: unterminated string");
+                    int length = end - beg;
+                    strings.push_back(std::string(beg, length));
+                    *(int*)ptr = length;
+                    ptr += 4;
+                    *(char**)ptr = strings[strings.size() - 1].data();
+                    ptr += 8;
+                    break;
+                }
+
                 default:
                     throw std::runtime_error("Unsupported type");
                     break;
@@ -1062,31 +1091,84 @@ Table::query_result Table::add(const std::string& e) {
                     std::memset(ptr + (end - beg), 0, c.count - (end - beg));
                     ptr += c.count;
                     break;
+
                 case DataType::STRING:
                 {
+                    char array_open = '\0';
+                    char array_close = '\0';
                     for (const char* i = last; i < x.data() + x.length(); i++) {
-                        if (*i == '\'' || *i == '"') {
-                            if (beg != nullptr && *(beg - 1) == *i) {
-                                end = i;
-                            } else if (beg == nullptr) {
-                                beg = i + 1;
+                        if (*i == '{' || *i == '[') {
+                            array_open = *i;
+                            array_close = (*i == '{') ? '}' : ']';
+                            beg = i + 1;
+                            break;
+                        } else if (*i != ' ') {
+                            throw std::invalid_argument("Invalid query: expected array opening bracket");
+                        }
+                    }
+
+                    if (array_open == '\0')
+                        throw std::invalid_argument("Invalid query: array opening bracket not found");
+
+                    // find closing bracket
+                    for (const char* i = beg; i < x.data() + x.length(); i++) {
+                        if (*i == array_close) {
+                            end = i;
+                            break;
+                        }
+                    }
+
+                    if (end == nullptr)
+                        throw std::invalid_argument("Invalid query: array closing bracket not found");
+
+                    std::vector<std::string> array_vals;
+                    std::string current_val;
+                    char quot = '\0';
+                    for (const char* i = beg; i < end; i++) {
+                        if (*i == ',' && quot == '\0') {
+                            continue;
+                        } else if ((*i == '\'' || *i == '"')) {
+                            if (quot == '\0') quot = *i;
+                            else if (quot == *i) {
+                                quot = '\0';
+                                array_vals.push_back(current_val);
+                                current_val.clear();
                             }
-                        } else if (*i == ',' && end != nullptr) {
+                        } else if (*i != ' ' && quot != '\0') {
+                            current_val += *i;
+                        }
+                    }
+                    if (!current_val.empty()) {
+                        array_vals.push_back(current_val);
+                    }
+
+                    if (array_vals.size() > c.count)
+                        throw std::invalid_argument("Invalid query: too many elements in array");
+
+                    // Convert and store values
+                    for (auto& s: array_vals) {
+                        strings.push_back(s);
+                        *(int*)ptr = s.length();
+                        ptr += 4;
+                        *(char**)ptr = strings[strings.size() - 1].data();
+                        ptr += 8;
+                    }
+
+                    // fill remaining space with zeros
+                    int element_type_size = 12;
+                    int remaining = c.count - array_vals.size();
+                    std::memset(ptr, 0, remaining * element_type_size);
+                    ptr += remaining * element_type_size;
+
+                    for (const char* i = end + 1; i < x.data() + x.length(); i++) {
+                        if (*i == ',') {
                             last = i + 1;
                             break;
                         }
                     }
-                    if (beg == nullptr || end == nullptr)
-                        throw std::invalid_argument("Invalid query: unterminated string");
-                    int length = end - beg;
-                    char* str = new char[length];
-                    std::memcpy(str, beg, length);
-                    *(int*)ptr = length;
-                    ptr += 4;
-                    *(char**)ptr = str;
-                    ptr += 8;
                     break;
                 }
+
                 default:
                     throw std::runtime_error("Unsupported type");
                     break;
