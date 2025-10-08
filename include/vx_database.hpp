@@ -222,6 +222,7 @@ public:
     TypedTable(const std::string& name, const Schema& schema): Table(name, schema) {}
     // When file exists or doesn't exist, could throw errors if schema and metadata aren't compatible
     TypedTable(const std::string& name, const std::vector<column>& columns): Table(name, columns) {}
+
     // These functions assume that the type T is a struct that follows the same schema as the table
 
     void add_element(const T& e) {

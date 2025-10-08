@@ -365,7 +365,7 @@ std::string Schema::get_schema() const {
 
 Table::Table(const std::string& name): name(name),
                                        file_name(name + "_table.db"),
-                                       strings_file_name(name + "_strings_table.db") {
+                                       strings_file_name(name + "_table_strings.db") {
     file.open(file_name, std::ios::binary | std::ios::in | std::ios::out);
     if (!file.is_open()) throw std::runtime_error("Table file does not exist");
     read_metadata();
@@ -374,7 +374,7 @@ Table::Table(const std::string& name): name(name),
 Table::Table(const std::string& name, const Schema& schema): schema(schema),
                                                              name(name),
                                                              file_name(name + "_table.db"),
-                                                             strings_file_name(name + "_strings_table.db") {
+                                                             strings_file_name(name + "_table_strings.db") {
     file.open(file_name, std::ios::binary | std::ios::in | std::ios::out);
     if (file.is_open()) {
         file.seekg(0, std::ios::end);
@@ -406,7 +406,7 @@ Table::Table(const std::string& name, const Schema& schema): schema(schema),
 Table::Table(const std::string& name, const std::vector<column>& columns): schema(columns),
                                                                            name(name),
                                                                            file_name(name + "_table.db"),
-                                                                           strings_file_name(name + "_strings_table.db") {
+                                                                           strings_file_name(name + "_table_strings.db") {
     file.open(file_name, std::ios::binary | std::ios::in | std::ios::out);
     if (file.is_open()) {
         file.seekg(0, std::ios::end);
