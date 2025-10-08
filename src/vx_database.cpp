@@ -6,6 +6,7 @@
 #include <mutex>
 #include <unistd.h>
 #include <vector>
+#include <list>
 #include <filesystem>
 #include <functional>
 #include <algorithm>
@@ -772,7 +773,7 @@ Table::query_result Table::add(const std::string& e) {
     const char* beg = nullptr;
     std::string val;
 
-    std::vector<std::string> strings;
+    std::list<std::string> strings;
 
     for (const char* i = e.data(); i < e.data() + e.length(); i++) {
         if (*i != '(' && *i != ' ' && quot == '\0') {
@@ -948,7 +949,7 @@ Table::query_result Table::add(const std::string& e) {
                     strings.push_back(std::string(beg, length));
                     *(int*)ptr = length;
                     ptr += 4;
-                    *(char**)ptr = strings[strings.size() - 1].data();
+                    *(char**)ptr = strings.back().data();
                     ptr += 8;
                     break;
                 }
@@ -1094,10 +1095,11 @@ Table::query_result Table::add(const std::string& e) {
 
                 case DataType::STRING:
                 {
+                    quot = '\0';
                     char array_open = '\0';
                     char array_close = '\0';
                     for (const char* i = last; i < x.data() + x.length(); i++) {
-                        if (*i == '{' || *i == '[') {
+                        if ((*i == '{' || *i == '[') && quot == '\0') {
                             array_open = *i;
                             array_close = (*i == '{') ? '}' : ']';
                             beg = i + 1;
@@ -1123,7 +1125,7 @@ Table::query_result Table::add(const std::string& e) {
 
                     std::vector<std::string> array_vals;
                     std::string current_val;
-                    char quot = '\0';
+                    quot = '\0';
                     for (const char* i = beg; i < end; i++) {
                         if (*i == ',' && quot == '\0') {
                             continue;
@@ -1150,7 +1152,7 @@ Table::query_result Table::add(const std::string& e) {
                         strings.push_back(s);
                         *(int*)ptr = s.length();
                         ptr += 4;
-                        *(char**)ptr = strings[strings.size() - 1].data();
+                        *(char**)ptr = strings.back().data();
                         ptr += 8;
                     }
 
