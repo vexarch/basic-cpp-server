@@ -69,7 +69,7 @@ class UsersController : public Controller {
 private:
     std::vector<std::string> users = { "Vexarch", "Someone" };
 
-    http::response Get(http::request &req) const override {
+    http::response Get(http::request &req) override {
         if (req.uri.parameters.find("name") == req.uri.parameters.end())
             return http::bad_request("text/plain", "Missing parameter");
 
@@ -89,10 +89,8 @@ public:
 
 ```cpp
 int main(int argc, char** argv) {
-    controllers = { new UsersController };
-
     Server server(HOST, PORT);
-    server.use_controllers(controllers);
+    server.use_controllers<UsersController>();
     s = &server;
 
     std::cout << "Server started on http://" << HOST << ":" << PORT << " ..." << std::endl;
